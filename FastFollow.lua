@@ -98,6 +98,7 @@ windower.register_event('addon command', function(command, ...)
     following = false
     tracking = false
     windower.ffxi.run(false)
+    zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
   elseif command == 'stopall' then
     follow_me = 0
     following = false
@@ -170,6 +171,7 @@ windower.register_event('ipc message', function(msgStr)
     following = false
     tracking = false
     windower.ffxi.run(false)
+    zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
   elseif command == 'follow' then
     if following then windower.send_ipc_message('stopfollowing '..following) end
     following = args[1]
