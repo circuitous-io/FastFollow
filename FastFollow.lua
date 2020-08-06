@@ -97,6 +97,7 @@ windower.register_event('addon command', function(command, ...)
     if following then windower.send_ipc_message('stopfollowing '..following) end
     following = false
     tracking = false
+    windower.ffxi.run(false)
   elseif command == 'stopall' then
     follow_me = 0
     following = false
