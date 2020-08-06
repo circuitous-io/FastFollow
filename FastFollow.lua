@@ -63,6 +63,8 @@ pauseon = S{}
 co = nil
 tracking = false
 
+-- Duplicated from gearswap statics.lua / packet_parsing.lua
+local in_mog_house = false
 -- Details on the most recent zone request from the master.
 -- Should we be running towards a zoneline? If so which zone should we be zoning from and where in that zone did the master zone from?
 local zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
@@ -212,7 +214,7 @@ windower.register_event('ipc message', function(msgStr)
 
     if zone_id and x and y then
       local info = windower.ffxi.get_info()
-      if info ~= nil and info.zone == zone_id then
+      if info ~= nil and info.zone == zone_id and not in_mog_house then
         zoning_status = {pending=true, zone_id=zone_id, pos_x=x, pos_y=y}
       end
     end
@@ -258,10 +260,7 @@ windower.register_event('prerender', function()
     distSq = distanceSquared(target, self)
     
     if zoning_status.pending then
-      if zoning_status.zone_id ~= info.zone then
-        -- If in a different zone from the last zone request, assume zoned successfully.
-        zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
-      else
+      if zoning_status.zone_id == info.zone then
         -- Ignore minimum distance config when moving to a zone line.
         windower.ffxi.run((zoning_status.pos_x - self.x), (zoning_status.pos_y - self.y))
         running = true
@@ -280,7 +279,7 @@ windower.register_event('prerender', function()
 end)
 
 local PACKET_OUT = { ACTION = 0x01A, USE_ITEM = 0x037, REQUEST_ZONE = 0x05E }
-local PACKET_INC = { ACTION = 0x028 }
+local PACKET_INC = { ACTION = 0x028, ZONE_UPDATE = 0x00A }
 local PACKET_ACTION_CATEGORY = { MAGIC_CAST = 0x03, DISMOUNT = 0x12 }
 local EVENT_ACTION_CATEGORY = { SPELL_FINISH = 4, ITEM_FINISH = 5, SPELL_BEGIN_OR_INTERRUPT = 8, ITEM_BEGIN_OR_INTERRUPT = 9 }
 local EVENT_ACTION_PARAM = { BEGIN = 24931, INTERRUPT = 28787 }
@@ -289,12 +288,16 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
   if blocked then return end
   
   if id == PACKET_OUT.REQUEST_ZONE then
+    local packet = packets.parse('outgoing', modified)
     if follow_me > 0 then
       local self = windower.ffxi.get_mob_by_target('me')
       local info = windower.ffxi.get_info()
       windower.send_ipc_message('zone %s %d %s %s':format(self.name, info.zone, self.x, self.y))
     end
-    
+
+    if following then
+      zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
+    end
     -- TODO: This might not be needed anymore since we're no longer sending possible duplicate zone request packets?
     if following and (os.clock() - last_zone) < zone_suppress then
       return true
@@ -359,6 +362,13 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
     end, pause_delay+item.cast_time)
     
     return true
+  end
+end)
+
+windower.register_event('incoming chunk', function(packetId, data)
+  if packetId == PACKET_INC.ZONE_UPDATE then
+    -- as per gearswap packet_parsing.lua
+    in_mog_house = data:byte(0x81) == 1
   end
 end)
 
