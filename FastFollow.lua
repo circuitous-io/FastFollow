@@ -63,6 +63,10 @@ pauseon = S{'spell','item','dismount'}
 co = nil
 tracking = false
 
+-- Details on the most recent zone request from the master.
+-- Should we be running towards a zoneline? If so which zone should we be zoning from and where in that zone did the master zone from?
+local zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
+
 track_info = T{}
 
 windower.register_event('unload', function()
@@ -196,12 +200,19 @@ windower.register_event('ipc message', function(msgStr)
       last_target = target
     end
   elseif command == 'zone' then
+    -- If a zone message was received from someone we weren't following, no-op.
     if not following or args[1] ~= following then return end
-    
-    local zone_line = tonumber(args[2])
-    local zone_type = tonumber(args[3])
-    
-    if zone_line and zone_type then zone(zone_line, zone_type, target.zone, target.x, target.y) end
+
+    local zone_id = tonumber(args[2])
+    local x = tonumber(args[3])
+    local y = tonumber(args[4])
+
+    if zone_id and x and y then
+      local info = windower.ffxi.get_info()
+      if info ~= nil and info.zone == zone_id then
+        zoning_status = {pending=true, zone_id=zone_id, pos_x=x, pos_y=y}
+      end
+    end
   elseif command == 'track' then
     tracking = args[1] == 'on' and true or false
   end
@@ -242,11 +253,18 @@ windower.register_event('prerender', function()
     end
     
     distSq = distanceSquared(target, self)
-    len = math.sqrt(distSq)
-    if len < 1 then len = 1 end
     
-    if target.zone == info.zone and distSq > min_dist and distSq < max_dist then
-      windower.ffxi.run((target.x - self.x)/len, (target.y - self.y)/len)
+    if zoning_status.pending then
+      if zoning_status.zone_id ~= info.zone then
+        -- If in a different zone from the last zone request, assume zoned successfully.
+        zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
+      else
+        -- Ignore minimum distance config when moving to a zone line.
+        windower.ffxi.run((zoning_status.pos_x - self.x), (zoning_status.pos_y - self.y))
+        running = true
+      end
+    elseif target.zone == info.zone and distSq > min_dist and distSq < max_dist then
+      windower.ffxi.run((target.x - self.x), (target.y - self.y))
       running = true
     elseif target.zone == info.zone and distSq <= min_dist then
       windower.ffxi.run(false)
@@ -269,12 +287,12 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
   
   if id == PACKET_OUT.REQUEST_ZONE then
     if follow_me > 0 then
-      local packet = packets.parse('outgoing', modified)
       local self = windower.ffxi.get_mob_by_target('me')
-      
-      windower.send_ipc_message('zone %s %d %d':format(self.name, packet['Zone Line'], packet['Type']))
+      local info = windower.ffxi.get_info()
+      windower.send_ipc_message('zone %s %d %d %d':format(self.name, info.zone, self.x, self.y))
     end
     
+    -- TODO: This might not be needed anymore since we're no longer sending possible duplicate zone request packets?
     if following and (os.clock() - last_zone) < zone_suppress then
       return true
     else
@@ -353,35 +371,6 @@ windower.register_event('action', function(action)
     casting = os.clock()
   end
 end)
-
-function zone(zone_line, zone_type, zone, x, y)
-  coroutine.sleep(0.2 + math.random()*2.5)
-  local self = windower.ffxi.get_mob_by_target('me')
-  local info = windower.ffxi.get_info()
-  
-  if not self or not info or info.zone ~= zone then return end
-  
-  local packet = packets.new('outgoing', PACKET_OUT.REQUEST_ZONE, {
-    ['Zone Line'] = zone_line,
-    ['Type'] = zone_type
-  })
-  
-  local pos = {x=x, y=y}
-  local distSq = distanceSquared(self, pos)
-  local i = 0
-  while distSq > zone_min_dist and i < 12 do
-    coroutine.sleep(0.25)
-    self = windower.ffxi.get_mob_by_target('me')
-    if not self then return end
-    distSq = distanceSquared(self, pos)
-    i = i + 1
-  end
-  
-  if distSq <= zone_min_dist then
-    packets.inject(packet)
-    last_zone = os.clock()
-  end
-end
 
 function updateInfo()
   box:visible(settings.show)
