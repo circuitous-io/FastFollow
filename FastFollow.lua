@@ -289,7 +289,7 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
     if follow_me > 0 then
       local self = windower.ffxi.get_mob_by_target('me')
       local info = windower.ffxi.get_info()
-      windower.send_ipc_message('zone %s %d %d %d':format(self.name, info.zone, self.x, self.y))
+      windower.send_ipc_message('zone %s %d %s %s':format(self.name, info.zone, self.x, self.y))
     end
     
     -- TODO: This might not be needed anymore since we're no longer sending possible duplicate zone request packets?
