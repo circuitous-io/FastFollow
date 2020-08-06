@@ -1,6 +1,6 @@
 _addon.name = 'FastFollow'
-_addon.author = 'DiscipleOfEris'
-_addon.version = '1.2.1'
+_addon.author = 'DiscipleOfEris (forked by Circuitous-Odin)'
+_addon.version = '1.2.1a'
 _addon.commands = {'fastfollow', 'ffo'}
 
 -- TODO: pause on ranged attacks.
