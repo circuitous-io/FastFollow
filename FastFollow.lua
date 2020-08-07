@@ -214,7 +214,7 @@ windower.register_event('ipc message', function(msgStr)
 
     if zone_id and x and y then
       local info = windower.ffxi.get_info()
-      if info ~= nil and info.zone == zone_id and not in_mog_house then
+      if info ~= nil and info.zone == zone_id then
         zoning_status = {pending=true, zone_id=zone_id, pos_x=x, pos_y=y}
       end
     end
@@ -284,6 +284,10 @@ local PACKET_ACTION_CATEGORY = { MAGIC_CAST = 0x03, DISMOUNT = 0x12 }
 local EVENT_ACTION_CATEGORY = { SPELL_FINISH = 4, ITEM_FINISH = 5, SPELL_BEGIN_OR_INTERRUPT = 8, ITEM_BEGIN_OR_INTERRUPT = 9 }
 local EVENT_ACTION_PARAM = { BEGIN = 24931, INTERRUPT = 28787 }
 
+-- Zone lines over which mules should not follow.
+-- 1836215674 is Ru'Lude Gardens into a Mog House, which is a zone triggered by a menu interaction.
+local ZONE_LINE_BLACKLIST = S{ 1836215674 }
+
 windower.register_event('outgoing chunk', function(id, original, modified, injected, blocked)
   if blocked then return end
   
@@ -292,7 +296,10 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
     if follow_me > 0 then
       local self = windower.ffxi.get_mob_by_target('me')
       local info = windower.ffxi.get_info()
-      windower.send_ipc_message('zone %s %d %s %s':format(self.name, info.zone, self.x, self.y))
+      -- Do not instruct mules to zone if zoning from a mog house or across a zone line which cannot be accessed by running over it.
+      if not ZONE_LINE_BLACKLIST:contains(packet['Zone Line']) and not in_mog_house then
+        windower.send_ipc_message('zone %s %d %s %s':format(self.name, info.zone, self.x, self.y))
+      end
     end
 
     if following then
