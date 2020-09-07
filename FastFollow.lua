@@ -207,7 +207,6 @@ windower.register_event('ipc message', function(msgStr)
   elseif command == 'zone' then
     -- If a zone message was received from someone we weren't following, no-op.
     if not following or args[1] ~= following then return end
-
     local zone_id = tonumber(args[2])
     local x = tonumber(args[3])
     local y = tonumber(args[4])
@@ -260,7 +259,12 @@ windower.register_event('prerender', function()
     distSq = distanceSquared(target, self)
     
     if zoning_status.pending then
-      if zoning_status.zone_id == info.zone then
+    if zoning_status.zone_id ~= info.zone then
+      -- One of two conditions for ending zoning attempt: in a different zone to where the zoning request originated.
+      -- Necessary because of a race condition between hitting a zone line and receiving the zone IPC message from the character being followed.
+      -- Does not counter the race condition when zoning to the same zone (e.g. mog house).
+      zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
+      else
         -- Ignore minimum distance config when moving to a zone line.
         windower.ffxi.run((zoning_status.pos_x - self.x), (zoning_status.pos_y - self.y))
         running = true
@@ -285,8 +289,9 @@ local EVENT_ACTION_CATEGORY = { SPELL_FINISH = 4, ITEM_FINISH = 5, SPELL_BEGIN_O
 local EVENT_ACTION_PARAM = { BEGIN = 24931, INTERRUPT = 28787 }
 
 -- Zone lines over which mules should not follow.
--- 1836215674 is Ru'Lude Gardens into a Mog House, which is a zone triggered by a menu interaction.
-local ZONE_LINE_BLACKLIST = S{ 1836215674 }
+local ZONE_LINE_BLACKLIST = S{
+  1836215674 -- 0x6D726D7A / mrmz / Ru'Lude Gardens into Mog House.
+}
 
 windower.register_event('outgoing chunk', function(id, original, modified, injected, blocked)
   if blocked then return end
@@ -303,6 +308,9 @@ windower.register_event('outgoing chunk', function(id, original, modified, injec
     end
 
     if following then
+      -- One of two conditions for ending zoning attempt: outgoing zone packet.
+      -- Necessary because some zone lines do not change zone (e.g. mog house).
+      -- There is a race condition between this outgoing packet and receiving a zone IPC message.
       zoning_status = {pending=false, zone_id=nil, pos_x=nil, pos_y=nil}
     end
     -- TODO: This might not be needed anymore since we're no longer sending possible duplicate zone request packets?
